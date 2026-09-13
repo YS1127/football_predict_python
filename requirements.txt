@@ -3,3 +3,4 @@ beautifulsoup4
 SQLAlchemy
 PyMySQL
 pydantic-settings
+pytest

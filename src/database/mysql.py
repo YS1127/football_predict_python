@@ -1,3 +1,5 @@
+"""生产 MySQL 引擎、Session 工厂和声明式模型基类。"""
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from src.config.settings import settings
@@ -17,4 +19,6 @@ SessionLocal = sessionmaker(
 )
 
 class BaseModel(DeclarativeBase):
+    """项目所有 SQLAlchemy 模型共享的声明式基类。"""
+
     pass

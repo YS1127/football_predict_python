@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "errorCode": "0",
+  "value": {
+    "matchResult": [{
+      "matchId": 2041387,
+      "sectionsNo999": "1:3",
+      "winFlag": "A",
+      "matchResultStatus": "2",
+      "poolStatus": "Payout"
+    }]
+  }
+}

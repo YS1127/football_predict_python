@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "errorCode": "0",
+  "value": {
+    "matchInfoList": [{
+      "businessDate": "2026-09-11",
+      "subMatchList": [{
+        "matchId": 2041387,
+        "matchNumStr": "周五002",
+        "businessDate": "2026-09-11",
+        "leagueId": 2068446,
+        "leagueAllName": "沙特职业联赛",
+        "homeTeamAllName": "哈马赫费萨利",
+        "awayTeamAllName": "吉达联合",
+        "matchDate": "2026-09-11",
+        "matchTime": "23:45:00",
+        "matchStatus": "Selling",
+        "sellStatus": 2,
+        "had": {"h": "5.75", "d": "4.45", "a": "1.37"}
+      }]
+    }]
+  }
+}

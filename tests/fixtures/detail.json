@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "errorCode": "0",
+  "value": {
+    "oddsHistory": {
+      "matchId": 2041387,
+      "hadList": [
+        {"h": "4.95", "d": "4.05", "a": "1.47", "updateDate": "2026-09-10", "updateTime": "13:49:52"},
+        {"h": "5.75", "d": "4.45", "a": "1.37", "updateDate": "2026-09-11", "updateTime": "21:49:45"}
+      ]
+    },
+    "matchResultList": [{"code": "HAD", "combination": "A", "odds": "1.37"}]
+  }
+}
