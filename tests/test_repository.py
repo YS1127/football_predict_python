@@ -6,9 +6,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from src.database.models import BaseModel, Match, OddsSnapshot
+from src.database.models import BaseModel, League, Match, OddsSnapshot
 from src.database.repository import MatchRepository, OddsWrite
-from src.domain import MatchData, MatchResultData, OddsSnapshotData
+from src.domain import LeagueData, MatchData, MatchResultData, OddsSnapshotData
 
 
 def make_session():
@@ -101,3 +101,12 @@ def test_apply_payout_updates_only_bonus():
     assert repo.apply_payout(match, Decimal("2.10")) is True
     assert repo.apply_payout(match, Decimal("2.10")) is False
     assert match.had_payout == Decimal("2.10")
+
+
+def test_add_league_saves_first_value_once():
+    session = make_session()
+    repo = MatchRepository(session)
+    assert repo.add_league(LeagueData(21, "英甲", "英格兰甲级联赛")) is True
+    assert repo.add_league(LeagueData(21, "新简称", "新名称")) is False
+    league = session.query(League).one()
+    assert (league.abbreviation, league.full_name) == ("英甲", "英格兰甲级联赛")

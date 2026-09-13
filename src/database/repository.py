@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from src.database.models import Match, OddsSnapshot
-from src.domain import MatchData, MatchResultData, OddsSnapshotData
+from src.database.models import League, Match, OddsSnapshot
+from src.domain import LeagueData, MatchData, MatchResultData, OddsSnapshotData
 
 
 CHINA_TZ = ZoneInfo("Asia/Shanghai")
@@ -32,6 +32,21 @@ class MatchRepository:
 
     def __init__(self, session: Session):
         self.session = session
+
+    def add_league(self, data: LeagueData) -> bool:
+        """首次写入官网联赛；已存在时保持原简称和全称不变。"""
+        existing = self.session.scalar(select(League).where(
+            League.official_league_id == data.official_league_id
+        ))
+        if existing is not None:
+            return False
+        self.session.add(League(
+            official_league_id=data.official_league_id,
+            abbreviation=data.abbreviation,
+            full_name=data.full_name,
+        ))
+        self.session.flush()
+        return True
 
     def upsert_match(self, data: MatchData) -> tuple[Match, str]:
         """按官网比赛 ID 新增或更新，并返回 created/updated/unchanged。"""

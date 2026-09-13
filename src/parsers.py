@@ -8,7 +8,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from src.domain import MatchData, MatchResultData, OddsSnapshotData
+from src.domain import LeagueData, MatchData, MatchResultData, OddsSnapshotData
 
 
 class ParseError(ValueError):
@@ -77,6 +77,36 @@ def parse_schedule(payload: dict[str, Any]) -> list[MatchData]:
                 is_valid=True,
             ))
     return matches
+
+
+def parse_leagues(payload: dict[str, Any]) -> list[LeagueData]:
+    """从当前赛程或历史赛果响应中提取并按官网 ID 去重联赛。
+
+    两个官网接口使用不同字段名，因此先识别响应形态，再映射为统一 LeagueData。
+    同一响应重复出现同一联赛时保留第一次，契合数据库“只保存一次”的规则。
+    """
+    value = _envelope(payload)
+    candidates: list[tuple[dict[str, Any], str, str]] = []
+    groups = value.get("matchInfoList")
+    if isinstance(groups, list):
+        for group in groups:
+            for row in group.get("subMatchList", []) if isinstance(group, dict) else []:
+                candidates.append((row, "leagueAbbName", "leagueAllName"))
+    rows = value.get("matchResult")
+    if isinstance(rows, list):
+        candidates.extend((row, "leagueNameAbbr", "leagueName") for row in rows)
+    if not candidates and not isinstance(groups, list) and not isinstance(rows, list):
+        raise ParseError("响应中没有可识别的比赛列表")
+
+    leagues: dict[int, LeagueData] = {}
+    for row, abbreviation_key, full_name_key in candidates:
+        league_id = int(_required(row, "leagueId"))
+        leagues.setdefault(league_id, LeagueData(
+            official_league_id=league_id,
+            abbreviation=str(_required(row, abbreviation_key)),
+            full_name=str(_required(row, full_name_key)),
+        ))
+    return list(leagues.values())
 
 
 def parse_historical_schedule(payload: dict[str, Any]) -> list[MatchData]:

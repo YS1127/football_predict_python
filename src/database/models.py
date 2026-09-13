@@ -9,6 +9,25 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.database.mysql import BaseModel
 
 
+class League(BaseModel):
+    """官网联赛字典；同一官网 ID 只保存首次发现的名称。"""
+
+    __tablename__ = "leagues"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True, comment="联赛表自增主键"
+    )
+    official_league_id: Mapped[int] = mapped_column(
+        Integer, unique=True, nullable=False, index=True, comment="中国官网联赛唯一标识 leagueId"
+    )
+    abbreviation: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="联赛简称"
+    )
+    full_name: Mapped[str] = mapped_column(
+        String(128), nullable=False, comment="联赛全称"
+    )
+
+
 class Match(BaseModel):
     """一场官网比赛的稳定信息、状态和最终赛果。"""
 

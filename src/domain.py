@@ -10,6 +10,15 @@ from decimal import Decimal
 
 
 @dataclass(frozen=True)
+class LeagueData:
+    """官网联赛字典的首次发现信息。"""
+
+    official_league_id: int
+    abbreviation: str
+    full_name: str
+
+
+@dataclass(frozen=True)
 class MatchData:
     """从当前赛程解析得到的一场 HAD 比赛。"""
     official_match_id: int

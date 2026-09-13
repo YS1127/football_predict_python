@@ -2,7 +2,14 @@ from decimal import Decimal
 
 import pytest
 
-from src.parsers import ParseError, parse_detail, parse_historical_schedule, parse_results, parse_schedule
+from src.parsers import (
+    ParseError,
+    parse_detail,
+    parse_historical_schedule,
+    parse_leagues,
+    parse_results,
+    parse_schedule,
+)
 
 
 def test_schedule_parses_had_match(load_fixture):
@@ -64,6 +71,14 @@ def test_historical_schedule_marks_invalid_match(load_fixture):
     payload["value"]["matchResult"][0]["sectionsNo999"] = "无效场次"
     match = parse_historical_schedule(payload)[0]
     assert match.is_valid is False
+
+
+def test_leagues_are_parsed_from_schedule_and_historical_results(load_fixture):
+    current = parse_leagues(load_fixture("schedule.json"))
+    historical = parse_leagues(load_fixture("historical_results.json"))
+    assert current[0].official_league_id == 2068446
+    assert (current[0].abbreviation, current[0].full_name) == ("沙职", "沙特职业联赛")
+    assert (historical[0].abbreviation, historical[0].full_name) == ("英甲", "英格兰甲级联赛")
 
 
 def test_schedule_rejects_missing_required_field(load_fixture):

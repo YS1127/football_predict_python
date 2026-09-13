@@ -15,6 +15,7 @@ from src.parsers import (
     ParseError,
     parse_detail,
     parse_historical_schedule,
+    parse_leagues,
     parse_results,
     parse_schedule,
 )
@@ -31,6 +32,7 @@ class SyncSummary:
     odds_conflicts: int = 0
     days_processed: int = 0
     matches_processed: int = 0
+    leagues_created: int = 0
     failures: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,7 +54,15 @@ class SyncService:
     def run(self) -> SyncSummary:
         """执行一次完整同步并返回统计；赛程级失败会直接抛出。"""
         summary = SyncSummary()
-        schedule = parse_schedule(self.client.fetch_schedule())
+        schedule_payload = self.client.fetch_schedule()
+        schedule = parse_schedule(schedule_payload)
+        leagues = parse_leagues(schedule_payload)
+
+        # 联赛字典只保存首次发现值；先于比赛写入，便于后续按 league_id 查询。
+        with self.session_factory() as session, session.begin():
+            repository = MatchRepository(session)
+            for league in leagues:
+                summary.leagues_created += repository.add_league(league)
 
         # 先逐场提交基础信息。这样即使后续某场详情接口失败，其他比赛仍能继续，
         # 且该比赛会因缺少比分/奖金在下一次同步中自动进入 pending 集合重试。
@@ -134,6 +144,7 @@ class BackfillService:
                 payload = self.client.fetch_results(current, current)
                 matches = parse_historical_schedule(payload)
                 results = parse_results(payload)
+                leagues = parse_leagues(payload)
             except (UpstreamError, ParseError) as exc:
                 summary.failures.append({
                     "date": current.isoformat(),
@@ -141,6 +152,11 @@ class BackfillService:
                 })
                 current += timedelta(days=1)
                 continue
+
+            with self.session_factory() as session, session.begin():
+                repository = MatchRepository(session)
+                for league in leagues:
+                    summary.leagues_created += repository.add_league(league)
 
             # 官网数组顺序并不稳定。先按官方比赛 ID 排序再逐场提交，使同批新记录
             # 的自增主键顺序与体彩比赛 ID 顺序一致；查询时仍应显式 ORDER BY。
