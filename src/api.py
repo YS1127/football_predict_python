@@ -29,6 +29,7 @@ class MatchResponse(ApiModel):
     official_match_id: int
     match_number: str
     business_date: date
+    match_date: date
     league_id: int
     league_name: str
     home_team: str
@@ -36,6 +37,7 @@ class MatchResponse(ApiModel):
     kickoff_at: datetime
     match_status: str
     sale_status: int
+    is_valid: bool
 
 
 class OddsSnapshotResponse(ApiModel):

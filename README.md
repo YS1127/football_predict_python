@@ -47,6 +47,14 @@ CRAWLER_USER_AGENT=Mozilla/5.0
 
 命令在标准输出打印 JSON 汇总，包括新增/更新比赛、插入赔率、回填赛果、赔率冲突和失败列表。没有单场失败时退出码为 `0`；存在失败时为 `1`，其他比赛仍会继续处理。
 
+按闭区间回填历史 HAD 赛程和赛果：
+
+```bash
+.venv/bin/python -m src.main backfill --start 2026-01-01 --end 2026-09-13
+```
+
+历史赛果接口不提供准确开赛时刻和销售状态，因此历史记录的 `match_date` 使用官网 `matchDate`，`kickoff_at` 和 `sale_status` 为 `NULL`，`business_date` 暂回退使用官网 `matchDate`。无效场次仍保留比赛身份，`is_valid` 为 `0`，但比分、总进球、HAD 结果和奖金全部为空。查询体彩顺序时应显式使用 `ORDER BY official_match_id ASC`，不依赖数据库自增主键或物理存储顺序。命令逐日请求、逐场提交，意外中断后可直接重复执行。
+
 ## 启动 HTTP API
 
 ```bash

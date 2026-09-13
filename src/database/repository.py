@@ -42,6 +42,7 @@ class MatchRepository:
         fields = {
             "match_number": data.match_number,
             "business_date": data.business_date,
+            "match_date": data.match_date,
             "league_id": data.league_id,
             "league_name": data.league_name,
             "home_team": data.home_team,
@@ -49,6 +50,7 @@ class MatchRepository:
             "kickoff_at": data.kickoff_at,
             "match_status": data.match_status,
             "sale_status": data.sale_status,
+            "is_valid": data.is_valid,
         }
         if entity is None:
             entity = Match(
@@ -64,6 +66,15 @@ class MatchRepository:
         changed = any(getattr(entity, key) != value for key, value in fields.items())
         for key, value in fields.items():
             setattr(entity, key, value)
+        if not data.is_valid:
+            # 无效比赛仍保留身份与联赛信息用于核对，但业务结果必须整体清空，
+            # 防止此前误解析的比分或奖金继续被下游当成有效赛果使用。
+            entity.home_goals = None
+            entity.away_goals = None
+            entity.total_goals = None
+            entity.had_result = None
+            entity.had_payout = None
+            entity.result_updated_at = None
         entity.last_seen_at = now
         self.session.flush()
         return entity, "updated" if changed else "unchanged"
@@ -94,10 +105,15 @@ class MatchRepository:
         return OddsWrite.INSERTED
 
     def apply_result(self, match: Match, result: MatchResultData, payout) -> bool:
-        """回填最终赛果和 HAD 奖金；值没有变化时不重复计为回填。"""
+        """回填最终赛果和可选奖金；未提供奖金时保留数据库已有值。"""
         if match.official_match_id != result.official_match_id:
             raise ValueError("赛果与比赛 ID 不一致")
-        values = (result.home_goals, result.away_goals, result.total_goals, result.had_result, payout)
+        if not match.is_valid:
+            return False
+        # 历史赛果批量接口不负责开奖奖金。None 表示“本次未知”而非“清空”，
+        # 防止历史回填覆盖详情同步已写入的奖金。
+        effective_payout = match.had_payout if payout is None else payout
+        values = (result.home_goals, result.away_goals, result.total_goals, result.had_result, effective_payout)
         current = (match.home_goals, match.away_goals, match.total_goals, match.had_result, match.had_payout)
         if current == values:
             return False

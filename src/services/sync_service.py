@@ -1,6 +1,7 @@
 """竞彩足球 HAD 单次同步编排服务。"""
 
 from dataclasses import asdict, dataclass, field
+from datetime import date, timedelta
 from typing import Any, Callable
 
 from sqlalchemy import select
@@ -9,7 +10,13 @@ from sqlalchemy.orm import Session
 from src.crawler.match_crawler import UpstreamError
 from src.database.models import Match
 from src.database.repository import MatchRepository, OddsWrite
-from src.parsers import ParseError, parse_detail, parse_results, parse_schedule
+from src.parsers import (
+    ParseError,
+    parse_detail,
+    parse_historical_schedule,
+    parse_results,
+    parse_schedule,
+)
 
 
 @dataclass
@@ -21,6 +28,7 @@ class SyncSummary:
     odds_inserted: int = 0
     results_filled: int = 0
     odds_conflicts: int = 0
+    days_processed: int = 0
     failures: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -103,3 +111,54 @@ class SyncService:
         failure = {"match_id": match_id, "error": f"{context}: {exc}"}
         if failure not in summary.failures:
             summary.failures.append(failure)
+
+
+class BackfillService:
+    """按自然日发现并回填历史 HAD 赛程与赛果。"""
+
+    def __init__(self, client, session_factory: Callable[[], Session]):
+        self.client = client
+        self.session_factory = session_factory
+
+    def run(self, start: date, end: date) -> SyncSummary:
+        """回填闭区间内的数据；逐日请求、逐场事务，支持安全重复执行。"""
+        if start > end:
+            raise ValueError("开始日期不能晚于结束日期")
+        summary = SyncSummary()
+        current = start
+        while current <= end:
+            try:
+                # 同一响应同时包含历史比赛身份信息和权威赛果，避免重复请求官网。
+                payload = self.client.fetch_results(current, current)
+                matches = parse_historical_schedule(payload)
+                results = parse_results(payload)
+            except (UpstreamError, ParseError) as exc:
+                summary.failures.append({
+                    "date": current.isoformat(),
+                    "error": f"历史日期查询失败: {exc}",
+                })
+                current += timedelta(days=1)
+                continue
+
+            # 官网数组顺序并不稳定。先按官方比赛 ID 排序再逐场提交，使同批新记录
+            # 的自增主键顺序与体彩比赛 ID 顺序一致；查询时仍应显式 ORDER BY。
+            for data in sorted(matches, key=lambda item: item.official_match_id):
+                try:
+                    with self.session_factory() as session, session.begin():
+                        repo = MatchRepository(session)
+                        match, state = repo.upsert_match(data)
+                        result = results.get(data.official_match_id)
+                        filled = result is not None and repo.apply_result(match, result, None)
+                    if state == "created":
+                        summary.matches_created += 1
+                    elif state == "updated":
+                        summary.matches_updated += 1
+                    if filled:
+                        summary.results_filled += 1
+                except Exception as exc:
+                    SyncService._record_failure(
+                        summary, data.official_match_id, "历史比赛写入失败", exc
+                    )
+            summary.days_processed += 1
+            current += timedelta(days=1)
+        return summary

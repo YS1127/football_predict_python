@@ -32,6 +32,9 @@ class Match(BaseModel):
     business_date: Mapped[date] = mapped_column(
         Date, nullable=False, index=True, comment="竞彩彩票业务日期（中国时区）"
     )
+    match_date: Mapped[date] = mapped_column(
+        Date, nullable=False, index=True, comment="比赛自然日期，来源为官网 matchDate"
+    )
     league_id: Mapped[int] = mapped_column(
         Integer, nullable=False, index=True, comment="中国官网联赛唯一标识 leagueId"
     )
@@ -44,14 +47,17 @@ class Match(BaseModel):
     away_team: Mapped[str] = mapped_column(
         String(128), nullable=False, comment="客队完整名称"
     )
-    kickoff_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, comment="计划开赛时间（中国时区）"
+    kickoff_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, comment="准确开赛时间；历史接口未提供时为空"
     )
     match_status: Mapped[str] = mapped_column(
         String(32), nullable=False, comment="官网比赛状态"
     )
-    sale_status: Mapped[int] = mapped_column(
-        Integer, nullable=False, comment="官网竞彩销售状态代码"
+    sale_status: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, comment="官网竞彩销售状态代码；历史接口不提供时为空"
+    )
+    is_valid: Mapped[bool] = mapped_column(
+        nullable=False, default=True, comment="是否有效场次：1有效，0无效"
     )
     home_goals: Mapped[int | None] = mapped_column(
         Integer, comment="主队常规时间及伤停补时进球数，未完场为空"

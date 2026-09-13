@@ -66,6 +66,7 @@ def parse_schedule(payload: dict[str, Any]) -> list[MatchData]:
                 official_match_id=int(_required(item, "matchId")),
                 match_number=str(_required(item, "matchNumStr")),
                 business_date=date.fromisoformat(str(_required(item, "businessDate"))),
+                match_date=date.fromisoformat(match_date),
                 league_id=int(_required(item, "leagueId")),
                 league_name=str(_required(item, "leagueAllName")),
                 home_team=str(_required(item, "homeTeamAllName")),
@@ -73,7 +74,41 @@ def parse_schedule(payload: dict[str, Any]) -> list[MatchData]:
                 kickoff_at=datetime.fromisoformat(f"{match_date} {match_time}"),
                 match_status=str(_required(item, "matchStatus")),
                 sale_status=int(_required(item, "sellStatus")),
+                is_valid=True,
             ))
+    return matches
+
+
+def parse_historical_schedule(payload: dict[str, Any]) -> list[MatchData]:
+    """从历史赛果响应提取可确认的赛程信息。
+
+    官网历史接口没有 matchTime 和 businessDate，因此 kickoff_at 保持为空，
+    match_date 使用官方 matchDate，business_date 同样回退为 matchDate。只有 h/d/a
+    三项均存在的记录才属于本项目 HAD 范围。文字“无效场次”仍保留比赛身份，
+    但由 is_valid=False 阻止任何比分、结果和奖金入库。
+    """
+    rows = _envelope(payload).get("matchResult")
+    if not isinstance(rows, list):
+        raise ParseError("缺少 value.matchResult")
+    matches: list[MatchData] = []
+    for row in rows:
+        if any(row.get(key) in (None, "") for key in ("h", "d", "a")):
+            continue
+        match_date = date.fromisoformat(str(_required(row, "matchDate")))
+        matches.append(MatchData(
+            official_match_id=int(_required(row, "matchId")),
+            match_number=str(_required(row, "matchNumStr")),
+            business_date=match_date,
+            match_date=match_date,
+            league_id=int(_required(row, "leagueId")),
+            league_name=str(_required(row, "leagueName")),
+            home_team=str(_required(row, "allHomeTeam")),
+            away_team=str(_required(row, "allAwayTeam")),
+            kickoff_at=None,
+            match_status=str(row.get("poolStatus") or "Payout"),
+            sale_status=None,
+            is_valid=str(row.get("sectionsNo999") or "").strip() != "无效场次",
+        ))
     return matches
 
 
@@ -123,6 +158,10 @@ def parse_results(payload: dict[str, Any]) -> dict[int, MatchResultData]:
         score = row.get("sectionsNo999")
         final = str(row.get("matchResultStatus")) == "2" or str(row.get("poolStatus", "")).lower() == "payout"
         if not final or not score:
+            continue
+        # 官网会把取消或作废比赛的全场比分明确标记为“无效场次”。这类记录没有
+        # 可入库的比分/HAD 结果，应跳过该场，而不能让它阻断同一日期的正常比赛。
+        if str(score).strip() == "无效场次":
             continue
         parts = str(score).split(":")
         if len(parts) != 2 or not all(part.strip().isdigit() for part in parts):

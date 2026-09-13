@@ -31,8 +31,9 @@ def test_every_database_column_has_a_comment():
 
 
 def match_data():
-    return MatchData(7, "周一001", date(2026, 9, 13), 101, "测试联赛", "主队", "客队",
-                     datetime(2026, 9, 13, 20), "Selling", 2)
+    return MatchData(7, "周一001", date(2026, 9, 13), date(2026, 9, 13),
+                     101, "测试联赛", "主队", "客队",
+                     datetime(2026, 9, 13, 20), "Selling", 2, True)
 
 
 def odds(home="2.10"):
@@ -71,3 +72,23 @@ def test_apply_result_sets_total_and_payout_once():
     stored = session.query(Match).one()
     assert (stored.home_goals, stored.away_goals, stored.total_goals) == (2, 1, 3)
     assert stored.had_result == "H"
+
+
+def test_apply_result_without_payout_preserves_existing_payout():
+    session = make_session()
+    repo = MatchRepository(session)
+    match, _ = repo.upsert_match(match_data())
+    repo.apply_result(match, MatchResultData(7, 2, 1, 3, "H"), Decimal("2.10"))
+    repo.apply_result(match, MatchResultData(7, 3, 1, 4, "H"), None)
+    assert match.had_payout == Decimal("2.10")
+
+
+def test_marking_match_invalid_clears_all_result_fields():
+    session = make_session()
+    repo = MatchRepository(session)
+    match, _ = repo.upsert_match(match_data())
+    repo.apply_result(match, MatchResultData(7, 2, 1, 3, "H"), Decimal("2.10"))
+    invalid = replace(match_data(), is_valid=False, kickoff_at=None, match_status="Payout")
+    repo.upsert_match(invalid)
+    assert (match.home_goals, match.away_goals, match.total_goals) == (None, None, None)
+    assert (match.had_result, match.had_payout, match.is_valid) == (None, None, False)

@@ -15,13 +15,15 @@ class MatchData:
     official_match_id: int
     match_number: str
     business_date: date
+    match_date: date
     league_id: int
     league_name: str
     home_team: str
     away_team: str
-    kickoff_at: datetime
+    kickoff_at: datetime | None
     match_status: str
-    sale_status: int
+    sale_status: int | None
+    is_valid: bool
 
 
 @dataclass(frozen=True)

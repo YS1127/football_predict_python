@@ -1,5 +1,6 @@
 import copy
 from contextlib import contextmanager
+from datetime import date
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -7,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.crawler.match_crawler import UpstreamError
 from src.database.models import BaseModel, Match, OddsSnapshot
-from src.services.sync_service import SyncService
+from src.services.sync_service import BackfillService, SyncService
 
 
 def factory():
@@ -60,3 +61,39 @@ def test_one_match_failure_does_not_block_other_match(load_fixture):
     assert summary.matches_created == 2
     assert summary.odds_inserted == 2
     assert summary.failures == [{"match_id": 8, "error": "官网请求失败: 模拟单场失败"}]
+
+
+def test_backfill_discovers_historical_match_and_writes_result(load_fixture):
+    sessions = factory()
+
+    class HistoricalClient:
+        def fetch_results(self, begin, end):
+            assert begin == end
+            return load_fixture("historical_results.json")
+
+    summary = BackfillService(HistoricalClient(), sessions).run(
+        date(2026, 1, 1), date(2026, 1, 1)
+    )
+    assert (summary.days_processed, summary.matches_created, summary.results_filled) == (1, 1, 1)
+    with sessions() as session:
+        match = session.scalar(select(Match).where(Match.official_match_id == 2036530))
+        assert match.kickoff_at is None
+        assert (match.home_goals, match.away_goals, match.had_result) == (1, 0, "H")
+
+
+def test_backfill_inserts_matches_in_official_id_order(load_fixture):
+    sessions = factory()
+    payload = load_fixture("historical_results.json")
+    earlier = copy.deepcopy(payload["value"]["matchResult"][0])
+    earlier.update(matchId=2036529, matchNumStr="周四020")
+    payload["value"]["matchResult"].insert(0, payload["value"]["matchResult"].pop())
+    payload["value"]["matchResult"].append(earlier)
+
+    class HistoricalClient:
+        def fetch_results(self, begin, end):
+            return payload
+
+    BackfillService(HistoricalClient(), sessions).run(date(2026, 1, 1), date(2026, 1, 1))
+    with sessions() as session:
+        ids = session.scalars(select(Match.official_match_id).order_by(Match.id)).all()
+    assert ids == [2036529, 2036530]

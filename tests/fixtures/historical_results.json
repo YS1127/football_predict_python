@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "errorCode": "0",
+  "value": {
+    "matchResult": [{
+      "matchId": 2036530,
+      "matchNumStr": "周四021",
+      "matchDate": "2026-01-01",
+      "leagueId": 21,
+      "leagueName": "英格兰甲级联赛",
+      "allHomeTeam": "埃克塞特城",
+      "allAwayTeam": "卢顿",
+      "h": "3.20",
+      "d": "3.10",
+      "a": "1.98",
+      "matchResultStatus": "2",
+      "poolStatus": "Payout",
+      "sectionsNo999": "1:0",
+      "winFlag": "H"
+    }]
+  }
+}
