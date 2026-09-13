@@ -47,6 +47,28 @@ CRAWLER_USER_AGENT=Mozilla/5.0
 
 命令在标准输出打印 JSON 汇总，包括新增/更新比赛、插入赔率、回填赛果、赔率冲突和失败列表。没有单场失败时退出码为 `0`；存在失败时为 `1`，其他比赛仍会继续处理。
 
+## 启动 HTTP API
+
+```bash
+.venv/bin/uvicorn src.api:app --host 127.0.0.1 --port 8000
+```
+
+服务启动后提供三个只读接口，均返回程序解析后的统一结构，不连接或写入 MySQL：
+
+- `GET /api/schedule`：当前 HAD 赛程
+- `GET /api/matches/{match_id}/detail`：指定比赛的完整 HAD 赔率历史和开奖奖金
+- `GET /api/results?begin=2026-09-01&end=2026-09-12`：指定日期区间赛果，单次最多 31 天
+
+交互式接口文档地址为 `http://127.0.0.1:8000/docs`。默认仅监听本机；确需局域网访问时再将 `--host` 改为 `0.0.0.0`，并自行配置防火墙和访问控制。
+
+需要在 PyCharm 或 VS Code 中打断点时，可直接 Debug `src/run_api.py`，或执行：
+
+```bash
+.venv/bin/python -m src.run_api
+```
+
+该调试入口使用单进程且不启用自动重载，确保 `src/api.py`、`src/parsers.py` 和 `src/crawler/match_crawler.py` 中的断点可以稳定命中。
+
 ## 测试
 
 ```bash

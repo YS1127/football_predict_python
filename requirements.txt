@@ -4,3 +4,6 @@ SQLAlchemy
 PyMySQL
 pydantic-settings
 pytest
+fastapi
+uvicorn
+httpx

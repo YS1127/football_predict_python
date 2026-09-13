@@ -27,6 +27,14 @@ def test_result_uses_regular_time_score(load_fixture):
     assert result.had_result == "A"
 
 
+def test_result_derives_had_when_upstream_omits_win_flag(load_fixture):
+    """部分官网已完场记录没有 winFlag，比分本身仍足以确定非让球赛果。"""
+    payload = load_fixture("results.json")
+    del payload["value"]["matchResult"][0]["winFlag"]
+    result = parse_results(payload)[2041387]
+    assert result.had_result == "A"
+
+
 def test_schedule_rejects_missing_required_field(load_fixture):
     payload = load_fixture("schedule.json")
     del payload["value"]["matchInfoList"][0]["subMatchList"][0]["matchId"]

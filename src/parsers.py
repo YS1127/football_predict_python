@@ -130,8 +130,10 @@ def parse_results(payload: dict[str, Any]) -> dict[int, MatchResultData]:
         home, away = (int(part) for part in parts)
         # HAD 不含让球：直接比较常规时间全场比分即可得到 H/D/A。
         derived = "H" if home > away else "A" if home < away else "D"
-        upstream = str(_required(row, "winFlag")).upper()
-        if upstream != derived:
+        # 部分官网历史记录不返回 winFlag。HAD 本身不含让球，因此全场比分足以
+        # 唯一推导赛果；仅在上游提供 winFlag 时做交叉校验，避免拒绝可信比分。
+        upstream = str(row.get("winFlag") or "").upper()
+        if upstream and upstream != derived:
             raise ParseError(f"比赛 {row.get('matchId')} 的比分和胜平负结果不一致")
         match_id = int(_required(row, "matchId"))
         results[match_id] = MatchResultData(match_id, home, away, home + away, derived)
