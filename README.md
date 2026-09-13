@@ -35,6 +35,7 @@ CRAWLER_TIMEOUT=30
 CRAWLER_RETRY_LIMIT=3
 CRAWLER_BACKOFF_SECONDS=0.5
 CRAWLER_USER_AGENT=Mozilla/5.0
+HISTORY_ODDS_REQUEST_INTERVAL_SECONDS=1.0
 ```
 
 数据库需提前创建并授予该用户建表及读写权限。首次同步会自动创建 `matches` 和 `odds_snapshots` 表，不会在日志或输出中打印数据库密码。
@@ -54,6 +55,14 @@ CRAWLER_USER_AGENT=Mozilla/5.0
 ```
 
 历史赛果接口不提供准确开赛时刻和销售状态，因此历史记录的 `match_date` 使用官网 `matchDate`，`kickoff_at` 和 `sale_status` 为 `NULL`，`business_date` 暂回退使用官网 `matchDate`。无效场次仍保留比赛身份，`is_valid` 为 `0`，但比分、总进球、HAD 结果和奖金全部为空。查询体彩顺序时应显式使用 `ORDER BY official_match_id ASC`，不依赖数据库自增主键或物理存储顺序。命令逐日请求、逐场提交，意外中断后可直接重复执行。
+
+为历史有效比赛补齐完整 HAD 赔率变化和开奖固定奖金：
+
+```bash
+.venv/bin/python -m src.main backfill-odds --start 2026-01-01 --end 2026-09-13
+```
+
+程序按 `official_match_id ASC` 串行请求详情，默认在相邻请求间等待 1 秒，并每 50 场向标准错误输出进度。可通过 `.env` 的 `HISTORY_ODDS_REQUEST_INTERVAL_SECONDS` 增大间隔；不建议设为 0 或使用并发请求。
 
 ## 启动 HTTP API
 

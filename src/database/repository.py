@@ -122,6 +122,15 @@ class MatchRepository:
         self.session.flush()
         return True
 
+    def apply_payout(self, match: Match, payout) -> bool:
+        """仅补充 HAD 开奖固定奖金，不触碰已保存的比分和赛果。"""
+        if not match.is_valid or payout is None or match.had_payout == payout:
+            return False
+        match.had_payout = payout
+        match.result_updated_at = china_now_naive()
+        self.session.flush()
+        return True
+
     def pending_matches(self) -> list[Match]:
         """返回尚无完整比分或尚无 HAD 开奖奖金的比赛。"""
         return list(self.session.scalars(select(Match).where(or_(

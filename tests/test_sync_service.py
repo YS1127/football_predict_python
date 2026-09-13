@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from src.crawler.match_crawler import UpstreamError
 from src.database.models import BaseModel, Match, OddsSnapshot
-from src.services.sync_service import BackfillService, SyncService
+from src.services.sync_service import BackfillOddsService, BackfillService, SyncService
 
 
 def factory():
@@ -97,3 +97,58 @@ def test_backfill_inserts_matches_in_official_id_order(load_fixture):
     with sessions() as session:
         ids = session.scalars(select(Match.official_match_id).order_by(Match.id)).all()
     assert ids == [2036529, 2036530]
+
+
+def test_odds_backfill_inserts_history_and_payout(load_fixture):
+    sessions = factory()
+
+    class HistoricalClient:
+        def fetch_results(self, begin, end):
+            return load_fixture("historical_results.json")
+
+    BackfillService(HistoricalClient(), sessions).run(date(2026, 1, 1), date(2026, 1, 1))
+    detail = load_fixture("detail.json")
+    detail["value"]["oddsHistory"]["matchId"] = 2036530
+
+    class DetailClient:
+        def fetch_detail(self, match_id):
+            assert match_id == 2036530
+            return detail
+
+    summary = BackfillOddsService(DetailClient(), sessions).run(
+        date(2026, 1, 1), date(2026, 1, 1)
+    )
+    assert (summary.matches_processed, summary.odds_inserted) == (1, 2)
+    repeated = BackfillOddsService(DetailClient(), sessions).run(
+        date(2026, 1, 1), date(2026, 1, 1)
+    )
+    assert (repeated.matches_processed, repeated.odds_inserted) == (0, 0)
+    with sessions() as session:
+        match = session.scalar(select(Match).where(Match.official_match_id == 2036530))
+        assert str(match.had_payout) == "1.370"
+
+
+def test_odds_backfill_waits_between_requests(load_fixture):
+    sessions = factory()
+    payload = load_fixture("historical_results.json")
+    second = copy.deepcopy(payload["value"]["matchResult"][0])
+    second.update(matchId=2036531, matchNumStr="周四022")
+    payload["value"]["matchResult"].append(second)
+
+    class HistoricalClient:
+        def fetch_results(self, begin, end):
+            return payload
+
+    BackfillService(HistoricalClient(), sessions).run(date(2026, 1, 1), date(2026, 1, 1))
+    sleeps = []
+
+    class DetailClient:
+        def fetch_detail(self, match_id):
+            detail = load_fixture("detail.json")
+            detail["value"]["oddsHistory"]["matchId"] = match_id
+            return detail
+
+    BackfillOddsService(
+        DetailClient(), sessions, request_interval_seconds=0.25, sleeper=sleeps.append
+    ).run(date(2026, 1, 1), date(2026, 1, 1))
+    assert sleeps == [0.25]

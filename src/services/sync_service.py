@@ -2,13 +2,14 @@
 
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
+import time
 from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.crawler.match_crawler import UpstreamError
-from src.database.models import Match
+from src.database.models import Match, OddsSnapshot
 from src.database.repository import MatchRepository, OddsWrite
 from src.parsers import (
     ParseError,
@@ -29,6 +30,7 @@ class SyncSummary:
     results_filled: int = 0
     odds_conflicts: int = 0
     days_processed: int = 0
+    matches_processed: int = 0
     failures: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -161,4 +163,67 @@ class BackfillService:
                     )
             summary.days_processed += 1
             current += timedelta(days=1)
+        return summary
+
+
+class BackfillOddsService:
+    """为数据库中已有的有效历史比赛补齐完整 HAD 赔率变化。"""
+
+    def __init__(
+        self,
+        client,
+        session_factory: Callable[[], Session],
+        progress=None,
+        request_interval_seconds: float = 1.0,
+        sleeper=time.sleep,
+    ):
+        self.client = client
+        self.session_factory = session_factory
+        self.progress = progress or (lambda processed, total: None)
+        self.request_interval_seconds = request_interval_seconds
+        self.sleeper = sleeper
+
+    def run(self, start: date, end: date) -> SyncSummary:
+        """按官方比赛 ID 升序处理日期闭区间内的有效比赛。"""
+        if start > end:
+            raise ValueError("开始日期不能晚于结束日期")
+        summary = SyncSummary()
+        with self.session_factory() as session:
+            targets = session.execute(
+                select(Match.official_match_id).where(
+                    Match.match_date.between(start, end),
+                    Match.is_valid.is_(True),
+                    ~select(OddsSnapshot.id).where(
+                        OddsSnapshot.match_id == Match.id
+                    ).exists(),
+                ).order_by(Match.official_match_id.asc())
+            ).scalars().all()
+
+        total = len(targets)
+        for match_id in targets:
+            try:
+                snapshots, payout = parse_detail(self.client.fetch_detail(match_id), match_id)
+                inserted = conflicts = 0
+                with self.session_factory() as session, session.begin():
+                    match = session.scalar(select(Match).where(Match.official_match_id == match_id))
+                    if match is None:
+                        raise RuntimeError("数据库中找不到历史比赛")
+                    repo = MatchRepository(session)
+                    for snapshot in snapshots:
+                        outcome = repo.add_odds(match, snapshot)
+                        inserted += outcome == OddsWrite.INSERTED
+                        conflicts += outcome == OddsWrite.CONFLICT
+                    repo.apply_payout(match, payout)
+                # 只有事务成功提交后才累计数字，避免回滚记录被误计为已写入。
+                summary.odds_inserted += inserted
+                summary.odds_conflicts += conflicts
+            except (UpstreamError, ParseError) as exc:
+                SyncService._record_failure(summary, match_id, "历史赔率查询失败", exc)
+            except Exception as exc:
+                SyncService._record_failure(summary, match_id, "历史赔率写入失败", exc)
+            summary.matches_processed += 1
+            self.progress(summary.matches_processed, total)
+            # 串行固定间隔比并发限流更可预测；最后一场后无需继续等待。
+            if summary.matches_processed < total and self.request_interval_seconds > 0:
+                self.sleeper(self.request_interval_seconds)
         return summary

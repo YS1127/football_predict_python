@@ -6,13 +6,15 @@
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
 from datetime import date
 
 from src.crawler.match_crawler import SportteryClient
+from src.config.settings import settings
 from src.database.models import BaseModel
 from src.database.mysql import SessionLocal, engine
-from src.services.sync_service import BackfillService, SyncService
+from src.services.sync_service import BackfillOddsService, BackfillService, SyncService
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,6 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
     backfill = commands.add_parser("backfill", help="按日期范围回填历史 HAD 赛程和赛果")
     backfill.add_argument("--start", type=date.fromisoformat, required=True, help="开始日期 YYYY-MM-DD")
     backfill.add_argument("--end", type=date.fromisoformat, required=True, help="结束日期 YYYY-MM-DD")
+    odds = commands.add_parser("backfill-odds", help="为历史有效比赛补齐完整 HAD 赔率")
+    odds.add_argument("--start", type=date.fromisoformat, required=True, help="开始日期 YYYY-MM-DD")
+    odds.add_argument("--end", type=date.fromisoformat, required=True, help="结束日期 YYYY-MM-DD")
     return parser
 
 
@@ -37,11 +42,22 @@ def cli(argv: Sequence[str] | None = None, service=None) -> int:
     args = build_parser().parse_args(argv)
     if service is None:
         BaseModel.metadata.create_all(engine)
-        service = (
-            SyncService(SportteryClient(), SessionLocal)
-            if args.command == "sync"
-            else BackfillService(SportteryClient(), SessionLocal)
-        )
+        if args.command == "sync":
+            service = SyncService(SportteryClient(), SessionLocal)
+        elif args.command == "backfill":
+            service = BackfillService(SportteryClient(), SessionLocal)
+        else:
+            def progress(processed: int, total: int) -> None:
+                """每 50 场或结束时向 stderr 输出进度，不污染 stdout 的 JSON。"""
+                if processed % 50 == 0 or processed == total:
+                    print(f"历史赔率进度: {processed}/{total}", file=sys.stderr, flush=True)
+
+            service = BackfillOddsService(
+                SportteryClient(),
+                SessionLocal,
+                progress=progress,
+                request_interval_seconds=settings.history_odds_request_interval_seconds,
+            )
     summary = service.run() if args.command == "sync" else service.run(args.start, args.end)
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     return 1 if summary.failures else 0

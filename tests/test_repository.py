@@ -92,3 +92,12 @@ def test_marking_match_invalid_clears_all_result_fields():
     repo.upsert_match(invalid)
     assert (match.home_goals, match.away_goals, match.total_goals) == (None, None, None)
     assert (match.had_result, match.had_payout, match.is_valid) == (None, None, False)
+
+
+def test_apply_payout_updates_only_bonus():
+    session = make_session()
+    repo = MatchRepository(session)
+    match, _ = repo.upsert_match(match_data())
+    assert repo.apply_payout(match, Decimal("2.10")) is True
+    assert repo.apply_payout(match, Decimal("2.10")) is False
+    assert match.had_payout == Decimal("2.10")

@@ -43,3 +43,14 @@ def test_backfill_cli_passes_explicit_date_range(capsys):
     assert tuple(value.isoformat() for value in service.arguments) == (
         "2026-01-01", "2026-09-13"
     )
+
+
+def test_backfill_odds_cli_passes_explicit_date_range(capsys):
+    service = Backfill(SyncSummary(matches_processed=2908))
+    code = cli([
+        "backfill-odds", "--start", "2026-01-01", "--end", "2026-09-13"
+    ], service)
+    assert code == 0
+    assert tuple(value.isoformat() for value in service.arguments) == (
+        "2026-01-01", "2026-09-13"
+    )
