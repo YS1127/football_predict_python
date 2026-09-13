@@ -6,6 +6,7 @@ from src.parsers import (
     ParseError,
     parse_detail,
     parse_historical_schedule,
+    parse_invalid_match_ids,
     parse_leagues,
     parse_results,
     parse_schedule,
@@ -54,6 +55,7 @@ def test_invalid_match_does_not_block_valid_results_on_same_day(load_fixture):
     })
     results = parse_results(payload)
     assert list(results) == [2041387]
+    assert parse_invalid_match_ids(payload) == {9}
 
 
 def test_historical_schedule_keeps_exact_date_and_unknown_kickoff(load_fixture):

@@ -36,6 +36,14 @@ CRAWLER_RETRY_LIMIT=3
 CRAWLER_BACKOFF_SECONDS=0.5
 CRAWLER_USER_AGENT=Mozilla/5.0
 HISTORY_ODDS_REQUEST_INTERVAL_SECONDS=1.0
+SCHEDULER_TIMEZONE=Asia/Shanghai
+DAILY_MATCH_SYNC_ENABLED=true
+DAILY_MATCH_SYNC_CRON=0 19 * * *
+DAILY_MATCH_DETAIL_INTERVAL_SECONDS=1.0
+RESULT_SYNC_ENABLED=true
+RESULT_SYNC_CRON=0 14 * * *
+SCHEDULER_MISFIRE_GRACE_SECONDS=3600
+MANUAL_TRIGGER_API_KEY=replace-with-a-random-secret
 ```
 
 数据库需提前创建并授予该用户建表及读写权限。首次同步会自动创建 `matches` 和 `odds_snapshots` 表，不会在日志或输出中打印数据库密码。
@@ -85,6 +93,30 @@ HISTORY_ODDS_REQUEST_INTERVAL_SECONDS=1.0
 ```
 
 该调试入口使用单进程且不启用自动重载，确保 `src/api.py`、`src/parsers.py` 和 `src/crawler/match_crawler.py` 中的断点可以稳定命中。
+
+## 每日定时任务
+
+```bash
+.venv/bin/python -m src.main scheduler
+```
+
+默认每天 19:00 同步当天竞彩业务日赛程和完整 HAD 赔率，每天 14:00 回填昨日及更早积压比赛的赛果、最终赔率和开奖奖金。两个时间均通过 `.env` 的五段式 cron 配置。
+
+单次手工 CLI：
+
+```bash
+.venv/bin/python -m src.main daily-match-sync
+.venv/bin/python -m src.main result-sync
+```
+
+启动 FastAPI 后，也可使用受 API Key 保护的接口手动触发：
+
+```bash
+curl -X POST -H "X-API-Key: $MANUAL_TRIGGER_API_KEY" http://127.0.0.1:8000/api/tasks/daily-match-sync
+curl -X POST -H "X-API-Key: $MANUAL_TRIGGER_API_KEY" http://127.0.0.1:8000/api/tasks/result-sync
+```
+
+未配置 Key 时接口禁用；Key 错误返回 401，任务正在运行返回 409。定时、CLI 和 HTTP 入口共享同一 MySQL 锁和业务服务。
 
 ## 测试
 

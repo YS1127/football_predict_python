@@ -7,14 +7,20 @@ HTTP 层只负责参数校验、调用 SportteryClient、执行纯解析和生�
 
 from datetime import date, datetime
 from decimal import Decimal
+import secrets
 from typing import Callable
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from src.crawler.match_crawler import SportteryClient, UpstreamError
+from src.config.settings import settings
+from src.database.mysql import SessionLocal
 from src.parsers import ParseError, parse_detail, parse_results, parse_schedule
+from src.services.daily_match_sync_service import DailyMatchSyncService
+from src.services.result_sync_service import ResultSyncService
+from src.services.task_runner import TaskBusy, TaskRunner
 
 
 class ApiModel(BaseModel):
@@ -76,6 +82,7 @@ def _success(data) -> dict:
 
 def create_app(
     client_factory: Callable[[], SportteryClient] = SportteryClient,
+    task_runner_factory=TaskRunner,
 ) -> FastAPI:
     """创建 FastAPI 应用。
 
@@ -92,6 +99,14 @@ def create_app(
         """FastAPI 依赖函数：为当前请求构造官网客户端。"""
         return client_factory()
 
+    def require_manual_key(x_api_key: str | None = Header(default=None)) -> None:
+        """保护会访问官网并写数据库的手动任务接口。"""
+        configured = settings.manual_trigger_api_key
+        if not configured:
+            raise HTTPException(status_code=503, detail="手动触发接口未启用")
+        if x_api_key is None or not secrets.compare_digest(x_api_key, configured):
+            raise HTTPException(status_code=401, detail="API Key 无效")
+
     @application.exception_handler(UpstreamError)
     async def handle_upstream_error(_request: Request, exc: UpstreamError):
         """将网络、限流及官网 HTTP 错误转换为稳定的 502 JSON。"""
@@ -107,6 +122,11 @@ def create_app(
             status_code=502,
             content={"success": False, "error": str(exc)},
         )
+
+    @application.exception_handler(TaskBusy)
+    async def handle_task_busy(_request: Request, exc: TaskBusy):
+        """同名任务或全局官网锁占用时返回 409。"""
+        return JSONResponse(status_code=409, content={"success": False, "error": str(exc)})
 
     @application.get("/api/schedule", summary="获取当前 HAD 赛程")
     def schedule(client=Depends(get_client)):
@@ -146,6 +166,23 @@ def create_app(
             for item in parsed.values()
         ]
         return _success(normalized)
+
+    @application.post("/api/tasks/daily-match-sync", summary="手动执行当天赛程和赔率任务")
+    def trigger_daily(_authorized=Depends(require_manual_key)):
+        """同步执行与 19:00 定时任务完全相同的服务。"""
+        service = DailyMatchSyncService(
+            client_factory(), SessionLocal,
+            request_interval_seconds=settings.daily_match_detail_interval_seconds,
+        )
+        summary = task_runner_factory().run("daily-match-sync", "http", service.run)
+        return _success(summary.to_dict())
+
+    @application.post("/api/tasks/result-sync", summary="手动执行昨日及积压赛果任务")
+    def trigger_results(_authorized=Depends(require_manual_key)):
+        """同步执行与 14:00 定时任务完全相同的服务。"""
+        service = ResultSyncService(client_factory(), SessionLocal)
+        summary = task_runner_factory().run("result-sync", "http", service.run)
+        return _success(summary.to_dict())
 
     return application
 

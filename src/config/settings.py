@@ -23,6 +23,14 @@ class Settings(BaseSettings):
     crawler_user_agent: str = "Mozilla/5.0"
     # 历史赔率逐场抓取的固定间隔，避免连续请求给官网造成不必要压力。
     history_odds_request_interval_seconds: float = 1.0
+    scheduler_timezone: str = "Asia/Shanghai"
+    daily_match_sync_enabled: bool = True
+    daily_match_sync_cron: str = "0 19 * * *"
+    daily_match_detail_interval_seconds: float = 1.0
+    result_sync_enabled: bool = True
+    result_sync_cron: str = "0 14 * * *"
+    scheduler_misfire_grace_seconds: int = 3600
+    manual_trigger_api_key: str | None = None
     sporttery_base_url: str = "https://webapi.sporttery.cn/gateway/uniform/football"
     sporttery_referer: str = "https://www.sporttery.cn/jc/jsq/zqspf/"
     sporttery_origin: str = "https://www.sporttery.cn"

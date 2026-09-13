@@ -15,6 +15,9 @@ from src.config.settings import settings
 from src.database.models import BaseModel
 from src.database.mysql import SessionLocal, engine
 from src.services.sync_service import BackfillOddsService, BackfillService, SyncService
+from src.services.daily_match_sync_service import DailyMatchSyncService
+from src.services.result_sync_service import ResultSyncService
+from src.services.task_runner import TaskBusy, TaskRunner
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +33,9 @@ def build_parser() -> argparse.ArgumentParser:
     odds = commands.add_parser("backfill-odds", help="为历史有效比赛补齐完整 HAD 赔率")
     odds.add_argument("--start", type=date.fromisoformat, required=True, help="开始日期 YYYY-MM-DD")
     odds.add_argument("--end", type=date.fromisoformat, required=True, help="结束日期 YYYY-MM-DD")
+    commands.add_parser("daily-match-sync", help="立即执行当天赛程和赔率任务")
+    commands.add_parser("result-sync", help="立即执行昨日及积压赛果任务")
+    commands.add_parser("scheduler", help="启动常驻定时调度器")
     return parser
 
 
@@ -40,12 +46,23 @@ def cli(argv: Sequence[str] | None = None, service=None) -> int:
     但仍输出完整汇总，便于调度系统告警和定位需要重试的比赛。
     """
     args = build_parser().parse_args(argv)
+    if args.command == "scheduler":
+        from src.scheduler import run_scheduler
+        run_scheduler()
+        return 0
     if service is None:
         BaseModel.metadata.create_all(engine)
         if args.command == "sync":
             service = SyncService(SportteryClient(), SessionLocal)
         elif args.command == "backfill":
             service = BackfillService(SportteryClient(), SessionLocal)
+        elif args.command == "daily-match-sync":
+            service = DailyMatchSyncService(
+                SportteryClient(), SessionLocal,
+                request_interval_seconds=settings.daily_match_detail_interval_seconds,
+            )
+        elif args.command == "result-sync":
+            service = ResultSyncService(SportteryClient(), SessionLocal)
         else:
             def progress(processed: int, total: int) -> None:
                 """每 50 场或结束时向 stderr 输出进度，不污染 stdout 的 JSON。"""
@@ -58,7 +75,12 @@ def cli(argv: Sequence[str] | None = None, service=None) -> int:
                 progress=progress,
                 request_interval_seconds=settings.history_odds_request_interval_seconds,
             )
-    summary = service.run() if args.command == "sync" else service.run(args.start, args.end)
+    if args.command == "sync":
+        summary = service.run()
+    elif args.command in {"daily-match-sync", "result-sync"}:
+        summary = TaskRunner().run(args.command, "cli", service.run)
+    else:
+        summary = service.run(args.start, args.end)
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     return 1 if summary.failures else 0
 

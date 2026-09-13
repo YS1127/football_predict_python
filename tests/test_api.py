@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 
 from src.api import create_app
 from src.crawler.match_crawler import UpstreamError
+from src.config.settings import settings
+from src.services.sync_service import SyncSummary
 
 
 class FakeClient:
@@ -92,3 +94,25 @@ def test_upstream_failure_is_mapped_to_502(load_fixture):
         "success": False,
         "error": "官网 HTTP 500，重试已耗尽",
     }
+
+
+def test_manual_task_api_key_guard(load_fixture, monkeypatch):
+    class Runner:
+        def run(self, task_name, source, operation):
+            assert (task_name, source) == ("daily-match-sync", "http")
+            return SyncSummary(matches_created=1)
+
+    client, _ = make_client(load_fixture)
+    monkeypatch.setattr(settings, "manual_trigger_api_key", None)
+    assert client.post("/api/tasks/daily-match-sync").status_code == 503
+
+    monkeypatch.setattr(settings, "manual_trigger_api_key", "secret-key")
+    app_client = TestClient(create_app(lambda: object(), lambda: Runner()))
+    assert app_client.post(
+        "/api/tasks/daily-match-sync", headers={"X-API-Key": "wrong"}
+    ).status_code == 401
+    response = app_client.post(
+        "/api/tasks/daily-match-sync", headers={"X-API-Key": "secret-key"}
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["matches_created"] == 1

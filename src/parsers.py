@@ -207,3 +207,15 @@ def parse_results(payload: dict[str, Any]) -> dict[int, MatchResultData]:
         match_id = int(_required(row, "matchId"))
         results[match_id] = MatchResultData(match_id, home, away, home + away, derived)
     return results
+
+
+def parse_invalid_match_ids(payload: dict[str, Any]) -> set[int]:
+    """返回官网明确标记为“无效场次”的比赛 ID，不推断延期或暂无赛果。"""
+    rows = _envelope(payload).get("matchResult")
+    if not isinstance(rows, list):
+        raise ParseError("缺少 value.matchResult")
+    return {
+        int(_required(row, "matchId"))
+        for row in rows
+        if str(row.get("sectionsNo999") or "").strip() == "无效场次"
+    }

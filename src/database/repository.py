@@ -4,6 +4,8 @@ from datetime import datetime
 from enum import Enum
 from zoneinfo import ZoneInfo
 
+from datetime import date
+
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -151,3 +153,24 @@ class MatchRepository:
         return list(self.session.scalars(select(Match).where(or_(
             Match.home_goals.is_(None), Match.away_goals.is_(None), Match.had_payout.is_(None)
         ))))
+
+    def pending_results(self, cutoff: date) -> list[Match]:
+        """按官网 ID 返回截止业务日前仍缺赛果或奖金的有效比赛。"""
+        return list(self.session.scalars(select(Match).where(
+            Match.business_date <= cutoff,
+            Match.is_valid.is_(True),
+            or_(Match.home_goals.is_(None), Match.away_goals.is_(None),
+                Match.had_result.is_(None), Match.had_payout.is_(None)),
+        ).order_by(Match.official_match_id.asc())))
+
+    def mark_invalid(self, match: Match) -> bool:
+        """将比赛标记无效并清除所有可能被误用的赛果字段。"""
+        changed = match.is_valid or any(value is not None for value in (
+            match.home_goals, match.away_goals, match.total_goals,
+            match.had_result, match.had_payout, match.result_updated_at,
+        ))
+        match.is_valid = False
+        match.home_goals = match.away_goals = match.total_goals = None
+        match.had_result = match.had_payout = match.result_updated_at = None
+        self.session.flush()
+        return changed
