@@ -11,7 +11,7 @@ def test_daily_match_task_never_calls_results():
         def fetch_results(self, *_):
             raise AssertionError("当天任务禁止查询赛果")
 
-    summary = DailyMatchSyncService(Client(), lambda: None).run(date(2026, 9, 13))
+    summary = DailyMatchSyncService(Client(), lambda: None, record_sync=False).run(date(2026, 9, 13))
     assert summary.matches_processed == 0
 
 

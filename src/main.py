@@ -78,7 +78,12 @@ def cli(argv: Sequence[str] | None = None, service=None) -> int:
     if args.command == "sync":
         summary = service.run()
     elif args.command in {"daily-match-sync", "result-sync"}:
-        summary = TaskRunner().run(args.command, "cli", service.run)
+        operation = (
+            (lambda: service.run(trigger_source="cli"))
+            if args.command == "daily-match-sync"
+            else service.run
+        )
+        summary = TaskRunner().run(args.command, "cli", operation)
     else:
         summary = service.run(args.start, args.end)
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))

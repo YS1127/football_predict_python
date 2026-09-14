@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from src.database.models import BaseModel, League, Match, OddsSnapshot
+from src.database.models import BaseModel, League, Match, OddsSnapshot, SyncRecord
 from src.database.repository import MatchRepository, OddsWrite
 from src.domain import LeagueData, MatchData, MatchResultData, OddsSnapshotData
 
@@ -110,3 +110,16 @@ def test_add_league_saves_first_value_once():
     assert repo.add_league(LeagueData(21, "新简称", "新名称")) is False
     league = session.query(League).one()
     assert (league.abbreviation, league.full_name) == ("英甲", "英格兰甲级联赛")
+
+
+def test_sync_record_tracks_one_execution_by_type():
+    session = make_session()
+    repo = MatchRepository(session)
+    record = repo.start_sync_record("batch-1", "schedule", "http", date(2026, 9, 14))
+    repo.finish_sync_record(record, "success", processed=10, created=8, updated=2, failed=0)
+    stored = session.query(SyncRecord).one()
+    assert (stored.batch_id, stored.sync_type, stored.trigger_source) == (
+        "batch-1", "schedule", "http"
+    )
+    assert (stored.status, stored.processed_count, stored.created_count) == ("success", 10, 8)
+    assert stored.finished_at is not None

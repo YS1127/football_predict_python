@@ -174,7 +174,9 @@ def create_app(
             client_factory(), SessionLocal,
             request_interval_seconds=settings.daily_match_detail_interval_seconds,
         )
-        summary = task_runner_factory().run("daily-match-sync", "http", service.run)
+        summary = task_runner_factory().run(
+            "daily-match-sync", "http", lambda: service.run(trigger_source="http")
+        )
         return _success(summary.to_dict())
 
     @application.post("/api/tasks/result-sync", summary="手动执行昨日及积压赛果任务")

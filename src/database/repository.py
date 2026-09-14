@@ -9,7 +9,7 @@ from datetime import date
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from src.database.models import League, Match, OddsSnapshot
+from src.database.models import League, Match, OddsSnapshot, SyncRecord
 from src.domain import LeagueData, MatchData, MatchResultData, OddsSnapshotData
 
 
@@ -49,6 +49,30 @@ class MatchRepository:
         ))
         self.session.flush()
         return True
+
+    def start_sync_record(self, batch_id: str, sync_type: str, trigger_source: str, target_date: date) -> SyncRecord:
+        """创建 running 状态记录；调用方事务提交后可观察到任务已启动。"""
+        record = SyncRecord(
+            batch_id=batch_id, sync_type=sync_type, trigger_source=trigger_source,
+            target_date=target_date, status="running", started_at=china_now_naive(),
+            processed_count=0, created_count=0, updated_count=0, failed_count=0,
+        )
+        self.session.add(record)
+        self.session.flush()
+        return record
+
+    def finish_sync_record(self, record: SyncRecord, status: str, *, processed: int,
+                           created: int, updated: int, failed: int,
+                           error_summary: str | None = None) -> None:
+        """以统计数据结束同步记录，不在错误摘要中保存敏感响应。"""
+        record.status = status
+        record.finished_at = china_now_naive()
+        record.processed_count = processed
+        record.created_count = created
+        record.updated_count = updated
+        record.failed_count = failed
+        record.error_summary = error_summary
+        self.session.flush()
 
     def upsert_match(self, data: MatchData) -> tuple[Match, str]:
         """按官网比赛 ID 新增或更新，并返回 created/updated/unchanged。"""

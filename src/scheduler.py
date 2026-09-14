@@ -16,7 +16,7 @@ def run_daily_match_sync() -> None:
     TaskRunner().run("daily-match-sync", "scheduled", lambda: DailyMatchSyncService(
         SportteryClient(), SessionLocal,
         request_interval_seconds=settings.daily_match_detail_interval_seconds,
-    ).run())
+    ).run(trigger_source="scheduled"))
 
 
 def run_result_sync() -> None:

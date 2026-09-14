@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.mysql import BaseModel
@@ -26,6 +26,26 @@ class League(BaseModel):
     full_name: Mapped[str] = mapped_column(
         String(128), nullable=False, comment="联赛全称"
     )
+
+
+class SyncRecord(BaseModel):
+    """一次赛程或赔率同步阶段的执行记录。"""
+
+    __tablename__ = "sync_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True, comment="同步记录自增主键")
+    batch_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True, comment="同一次任务的批次 UUID")
+    sync_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True, comment="同步类型：schedule赛程、odds赔率")
+    trigger_source: Mapped[str] = mapped_column(String(16), nullable=False, comment="触发来源：scheduled、http、cli或internal")
+    target_date: Mapped[date] = mapped_column(Date, nullable=False, index=True, comment="本次同步目标竞彩业务日期")
+    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True, comment="执行状态：running、success、partial_failed或failed")
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, comment="任务开始中国本地时间")
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, comment="任务结束中国本地时间")
+    processed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="已处理比赛数量")
+    created_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="新增数据数量")
+    updated_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="更新数据数量")
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="失败比赛数量")
+    error_summary: Mapped[str | None] = mapped_column(Text, comment="简短错误摘要，不保存完整官网响应")
 
 
 class Match(BaseModel):

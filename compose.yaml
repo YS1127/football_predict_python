@@ -3,7 +3,7 @@ name: predict-football-python
 # API 与调度器使用同一镜像，但保持一容器一个主进程。两者共享 MySQL，
 # 并通过数据库 advisory lock 防止定时任务与 HTTP 手动任务重复执行。
 services:
-  api:
+  python-api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -41,7 +41,7 @@ services:
     networks:
       - shiguang-network
 
-  scheduler:
+  python-scheduler:
     build:
       context: .
       dockerfile: Dockerfile
