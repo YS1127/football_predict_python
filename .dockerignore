@@ -1,0 +1,22 @@
+# 数据库密码等运行配置必须由容器环境注入，禁止打包进镜像。
+.env
+.env.*
+!.env.example
+
+# 本地开发环境、版本控制与 IDE 元数据不属于运行时镜像。
+.venv/
+.git/
+.idea/
+.vscode/
+
+# Python 与测试生成物。
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 本地样本、测试和设计文档不进入生产构建上下文。
+tests/
+json/
+docs/
