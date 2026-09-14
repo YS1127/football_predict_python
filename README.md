@@ -125,3 +125,41 @@ curl -X POST -H "X-API-Key: $MANUAL_TRIGGER_API_KEY" http://127.0.0.1:8000/api/t
 ```
 
 单元测试使用本地 JSON 样本和 SQLite 内存库，不访问官网，也不会连接生产 MySQL。若补充 MySQL 集成测试，必须通过独立测试库配置运行。
+
+## Docker Compose
+
+使用同一镜像启动 API 和定时调度器：
+
+```bash
+docker compose up -d --build
+```
+
+当前 Compose 默认加入已有的 `docker-compose-files_shiguang-network` 网络，并通过容器名 `shiguang_mysql8:3306` 访问 MySQL。MySQL 容器必须已启动：
+
+```bash
+docker ps --filter name=shiguang_mysql8
+```
+
+如果以后 MySQL 容器名或网络名变化，可以覆盖：
+
+```bash
+DOCKER_DB_HOST=other-mysql \
+MYSQL_DOCKER_NETWORK=other-network \
+docker compose up -d --build
+```
+
+查看运行状态与日志：
+
+```bash
+docker compose ps
+docker compose logs -f api
+docker compose logs -f scheduler
+```
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+`.env` 只在容器启动时注入，不会复制进镜像。API 默认映射到宿主机 8000 端口，可通过 `API_PORT=8080` 覆盖。
